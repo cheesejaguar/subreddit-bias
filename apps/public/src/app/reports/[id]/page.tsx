@@ -135,11 +135,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
             <div className="bg-card rounded-lg border p-6">
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
-                  <SentimentChart
-                    positive={report.communitySentiment.distribution.positive}
-                    neutral={report.communitySentiment.distribution.neutral}
-                    negative={report.communitySentiment.distribution.negative}
-                  />
+                  <SentimentChart distribution={report.communitySentiment.distribution} />
                 </div>
                 <div className="space-y-4">
                   <ConfidenceInterval
@@ -178,11 +174,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
             <div className="bg-card rounded-lg border p-6">
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
-                  <SentimentChart
-                    positive={report.moderatorSentiment.distribution.positive}
-                    neutral={report.moderatorSentiment.distribution.neutral}
-                    negative={report.moderatorSentiment.distribution.negative}
-                  />
+                  <SentimentChart distribution={report.moderatorSentiment.distribution} />
                 </div>
                 <div className="space-y-4">
                   <ConfidenceInterval
