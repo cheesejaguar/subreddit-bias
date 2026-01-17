@@ -1,0 +1,25 @@
+{
+  "name": "subreddit-bias",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "dev:public": "bun run --filter @subreddit-bias/public dev",
+    "dev:admin": "bun run --filter @subreddit-bias/admin dev",
+    "build": "bun run --filter '*' build",
+    "test": "bun test --coverage",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "lint": "bun run --filter '*' lint",
+    "typecheck": "bun run --filter '*' typecheck"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.3.0"
+  }
+}

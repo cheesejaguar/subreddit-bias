@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "framework": "nextjs",
+  "installCommand": "bun install",
+  "buildCommand": "bun run build",
+  "crons": [
+    {
+      "path": "/api/cron/run",
+      "schedule": "0 */6 * * *"
+    }
+  ],
+  "env": {
+    "DATABASE_URL": "@neon_database_url",
+    "UPSTASH_REDIS_REST_URL": "@upstash_redis_rest_url",
+    "UPSTASH_REDIS_REST_TOKEN": "@upstash_redis_rest_token",
+    "OPENROUTER_API_KEY": "@openrouter_api_key",
+    "CRON_SECRET": "@cron_secret"
+  }
+}
