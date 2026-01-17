@@ -40,10 +40,23 @@ export async function POST(request: Request) {
       }
 
       try {
+        // Calculate timeframe (default to past week)
+        const timeframeEnd = new Date();
+        const timeframeStart = new Date();
+        timeframeStart.setDate(timeframeStart.getDate() - 7);
+
+        // Build full config from schedule config
+        const fullConfig = {
+          ...schedule.config,
+          subreddit: schedule.subreddit,
+          timeframeStart,
+          timeframeEnd,
+        };
+
         // Create a new report for this schedule
         const report = await db.createReport({
           subreddit: schedule.subreddit,
-          config: schedule.config,
+          config: fullConfig,
           methodologyVersion: '1.0.0',
         });
 
@@ -68,7 +81,7 @@ export async function POST(request: Request) {
         // Execute the pipeline (in a real deployment, this would be queued)
         await db.updateJobStatus(job.id, 'running');
 
-        const result = await executePipeline(schedule.config, {
+        const result = await executePipeline(fullConfig, {
           onProgress: async (progress) => {
             await db.updateJobProgress(
               job.id,
