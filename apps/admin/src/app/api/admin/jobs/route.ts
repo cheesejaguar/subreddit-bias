@@ -1,34 +1,52 @@
 import { NextResponse } from 'next/server';
 import { createDatabaseClient } from '@subreddit-bias/db';
 
-// GET - Get job status
+// GET - Get job status or list all jobs
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const reportId = searchParams.get('reportId');
-
-    if (!reportId) {
-      return NextResponse.json(
-        { success: false, error: 'reportId is required' },
-        { status: 400 }
-      );
-    }
+    const activeOnly = searchParams.get('active') === 'true';
 
     const db = createDatabaseClient();
     await db.connect();
 
-    const job = await db.getJobByReportId(reportId);
+    // If reportId provided, get specific job
+    if (reportId) {
+      const job = await db.getJobByReportId(reportId);
 
-    if (!job) {
-      return NextResponse.json(
-        { success: false, error: 'Job not found' },
-        { status: 404 }
-      );
+      if (!job) {
+        return NextResponse.json(
+          { success: false, error: 'Job not found' },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: job,
+      });
     }
+
+    // Otherwise, list all jobs
+    const jobs = activeOnly
+      ? await db.getActiveJobs()
+      : await db.getAllJobs();
+
+    // Get associated reports for subreddit names
+    const jobsWithSubreddits = await Promise.all(
+      jobs.map(async (job) => {
+        const report = await db.getReport(job.reportId);
+        return {
+          ...job,
+          subreddit: report?.subreddit ?? 'unknown',
+        };
+      })
+    );
 
     return NextResponse.json({
       success: true,
-      data: job,
+      data: jobsWithSubreddits,
     });
   } catch (error) {
     return NextResponse.json(

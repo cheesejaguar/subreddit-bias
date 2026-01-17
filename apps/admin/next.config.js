@@ -4,4 +4,4 @@ const nextConfig = {
   transpilePackages: ['@subreddit-bias/core', '@subreddit-bias/db', '@subreddit-bias/llm'],
 };
 
-module.exports = nextConfig;
+export default nextConfig;

@@ -94,13 +94,13 @@ export async function POST(request: Request) {
   }
 }
 
-// GET - List all reports
+// GET - List all reports (including non-completed for admin)
 export async function GET() {
   try {
     const db = createDatabaseClient();
     await db.connect();
 
-    const reports = await db.getRecentReports(50);
+    const reports = await db.getAllReports(50);
 
     return NextResponse.json({
       success: true,

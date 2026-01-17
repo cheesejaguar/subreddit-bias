@@ -23,7 +23,7 @@ import type {
   FrameworkType,
   SentimentStats,
   TargetGroupStats,
-} from './types.js';
+} from './types';
 
 // SQL query interface (compatible with @neondatabase/serverless)
 export interface SqlQuery {

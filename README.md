@@ -91,9 +91,9 @@ Create a `.env` file in the root directory:
 # Database (Neon Postgres)
 DATABASE_URL=postgresql://...
 
-# Cache (Upstash Redis)
-UPSTASH_REDIS_REST_URL=https://...
-UPSTASH_REDIS_REST_TOKEN=...
+# Cache (Vercel KV / Upstash Redis)
+KV_REST_API_URL=https://...
+KV_REST_API_TOKEN=...
 
 # LLM API (OpenRouter)
 OPENROUTER_API_KEY=sk-or-...
@@ -107,13 +107,15 @@ CRON_SECRET=your-secret-here
 ### Running the Public Site
 
 ```bash
-bun run --filter public dev
+bun run dev:public
+# Runs on http://localhost:4000
 ```
 
 ### Running the Admin Studio
 
 ```bash
-bun run --filter admin dev
+bun run dev:admin
+# Runs on http://localhost:4001
 ```
 
 ### Running Tests
@@ -224,10 +226,10 @@ The included `vercel.json` configures:
 2. Run the schema migrations from `packages/db/src/schema.ts`
 3. Add the connection string to your environment
 
-### Cache Setup (Upstash)
+### Cache Setup (Vercel KV / Upstash)
 
-1. Create an Upstash Redis database at [upstash.com](https://upstash.com)
-2. Add REST URL and token to your environment
+1. Create an Upstash Redis database at [upstash.com](https://upstash.com) or link Vercel KV
+2. Add `KV_REST_API_URL` and `KV_REST_API_TOKEN` to your environment
 
 ## Limitations & Ethical Considerations
 

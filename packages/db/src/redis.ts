@@ -285,17 +285,48 @@ export class RedisError extends Error {
 }
 
 /**
- * Create an Upstash Redis client from environment variables
+ * Parse a Redis URL into components
+ * Supports: redis://user:password@host:port/db
  */
-export function createRedisClient(): UpstashRedisClient | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-
-  if (!url || !token) {
+export function parseRedisUrl(url: string): { host: string; port: number; password?: string; user?: string } | null {
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname,
+      port: parseInt(parsed.port || '6379', 10),
+      password: parsed.password || undefined,
+      user: parsed.username || undefined,
+    };
+  } catch {
     return null;
   }
+}
 
-  return new UpstashRedisClient({ url, token });
+/**
+ * Create a Redis client from environment variables
+ * Supports Vercel KV / Upstash REST API format
+ */
+export function createRedisClient(): UpstashRedisClient | null {
+  // Check for Vercel KV / Upstash REST API format
+  // Priority: KV_REST_API_URL > UPSTASH_REDIS_REST_URL
+  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (url && token) {
+    return new UpstashRedisClient({ url, token });
+  }
+
+  return null;
+}
+
+/**
+ * Check if Redis is configured
+ */
+export function isRedisConfigured(): boolean {
+  return !!(
+    (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) ||
+    (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN)
+  );
 }
 
 /**

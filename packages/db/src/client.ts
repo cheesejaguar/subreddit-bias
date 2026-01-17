@@ -23,7 +23,7 @@ import type {
   FrameworkType,
   SentimentStats,
   TargetGroupStats,
-} from './types.js';
+} from './types';
 
 // Database configuration
 export interface DatabaseConfig {
@@ -131,6 +131,12 @@ export class DatabaseClient {
       .slice(0, limit);
   }
 
+  async getAllReports(limit: number = 50): Promise<Report[]> {
+    return Array.from(this.storage.reports.values())
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  }
+
   async updateReportStatus(id: string, status: JobStatus, errorMessage?: string): Promise<Report | null> {
     const report = this.storage.reports.get(id);
     if (!report) return null;
@@ -185,6 +191,26 @@ export class DatabaseClient {
   async getJobByReportId(reportId: string): Promise<Job | null> {
     return Array.from(this.storage.jobs.values())
       .find(j => j.reportId === reportId) ?? null;
+  }
+
+  async getAllJobs(limit: number = 50): Promise<Job[]> {
+    return Array.from(this.storage.jobs.values())
+      .sort((a, b) => {
+        const aTime = a.startedAt?.getTime() ?? 0;
+        const bTime = b.startedAt?.getTime() ?? 0;
+        return bTime - aTime;
+      })
+      .slice(0, limit);
+  }
+
+  async getActiveJobs(): Promise<Job[]> {
+    return Array.from(this.storage.jobs.values())
+      .filter(j => j.status === 'pending' || j.status === 'running')
+      .sort((a, b) => {
+        const aTime = a.startedAt?.getTime() ?? 0;
+        const bTime = b.startedAt?.getTime() ?? 0;
+        return bTime - aTime;
+      });
   }
 
   async updateJobStatus(id: string, status: JobStatus, errorMessage?: string): Promise<Job | null> {
@@ -411,11 +437,34 @@ export class DatabaseClient {
   }
 }
 
+// Singleton instance for in-memory development
+let singletonClient: DatabaseClient | null = null;
+
 // Factory function to create database client
 export function createDatabaseClient(connectionString?: string): DatabaseClient {
+  const connString = connectionString ?? process.env.DATABASE_URL ?? 'memory://';
+
+  // Use singleton for in-memory storage to persist data across requests in dev
+  if (connString === 'memory://') {
+    if (!singletonClient) {
+      singletonClient = new DatabaseClient({
+        connectionString: connString,
+        ssl: false,
+        maxConnections: 10,
+      });
+    }
+    return singletonClient;
+  }
+
+  // Create new client for real database connections
   return new DatabaseClient({
-    connectionString: connectionString ?? process.env.DATABASE_URL ?? 'memory://',
+    connectionString: connString,
     ssl: true,
     maxConnections: 10,
   });
+}
+
+// Reset singleton for testing purposes
+export function resetDatabaseClient(): void {
+  singletonClient = null;
 }

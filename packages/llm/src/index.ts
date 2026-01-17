@@ -2,6 +2,6 @@
  * LLM package main export
  */
 
-export * from './client.js';
-export * from './prompts.js';
-export * from './batching.js';
+export * from './client';
+export * from './prompts';
+export * from './batching';

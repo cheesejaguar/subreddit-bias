@@ -5,13 +5,13 @@
 
 import type { FrameworkType, TaskType, CacheEntry, CreateCacheEntry } from '@subreddit-bias/db';
 import type { RedditComment } from '@subreddit-bias/core';
-import type { OpenRouterClient, RequestResult, OpenRouterResponse } from './client.js';
+import type { OpenRouterClient, RequestResult, OpenRouterResponse } from './client';
 import {
   buildSentimentPrompt,
   buildTargetGroupPrompt,
   PROMPT_VERSION,
   type CommentInput,
-} from './prompts.js';
+} from './prompts';
 import {
   parseSentimentBatchResponse,
   parseTargetGroupBatchResponse,
