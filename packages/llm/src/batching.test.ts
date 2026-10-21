@@ -16,7 +16,7 @@ describe('DEFAULT_BATCH_CONFIG', () => {
   test('has correct default values', () => {
     expect(DEFAULT_BATCH_CONFIG.batchSize).toBe(10);
     expect(DEFAULT_BATCH_CONFIG.maxTokensPerBatch).toBe(4000);
-    expect(DEFAULT_BATCH_CONFIG.model).toBe('openai/gpt-4o-mini');
+    expect(DEFAULT_BATCH_CONFIG.model).toBe('openai/gpt-6-luna');
     expect(DEFAULT_BATCH_CONFIG.promptVersion).toBeDefined();
   });
 });

@@ -72,7 +72,7 @@ export interface RequestResult<T> {
 // Default configuration
 const DEFAULT_CONFIG = {
   baseUrl: 'https://openrouter.ai/api/v1',
-  defaultModel: 'openai/gpt-4o-mini',
+  defaultModel: 'openai/gpt-6-luna',
   timeout: 60000,
   maxRetries: 3,
   retryDelay: 1000,
@@ -80,11 +80,10 @@ const DEFAULT_CONFIG = {
 
 // Model pricing (per 1M tokens)
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  'openai/gpt-4o-mini': { input: 0.15, output: 0.6 },
-  'openai/gpt-4o': { input: 2.5, output: 10 },
-  'openai/gpt-3.5-turbo': { input: 0.5, output: 1.5 },
-  'anthropic/claude-3-haiku': { input: 0.25, output: 1.25 },
-  'anthropic/claude-3-sonnet': { input: 3, output: 15 },
+  'openai/gpt-6-luna': { input: 0.1, output: 0.5 },
+  'openai/gpt-6-sol': { input: 2, output: 10 },
+  'anthropic/claude-haiku-5.5': { input: 0.1, output: 0.5 },
+  'anthropic/claude-sonnet-5.5': { input: 2, output: 10 },
 };
 
 /**
@@ -120,12 +119,16 @@ export class OpenRouterClient {
     }
   ): Promise<RequestResult<OpenRouterResponse>> {
     const model = options?.model ?? this.config.defaultModel;
+    // Current reasoning models (GPT-6, Claude 5.5) do not accept `temperature`
+    // (see OpenRouter supported_parameters), so only send it when explicitly set.
     const request: OpenRouterRequest = {
       model,
       messages,
-      temperature: options?.temperature ?? 0.1,
       max_tokens: options?.maxTokens ?? 4096,
     };
+    if (options?.temperature !== undefined) {
+      request.temperature = options.temperature;
+    }
 
     if (options?.jsonMode) {
       request.response_format = { type: 'json_object' };
@@ -261,7 +264,7 @@ export class OpenRouterClient {
    * Calculate cost for a request
    */
   calculateCost(model: string, inputTokens: number, outputTokens: number): number {
-    const pricing = MODEL_PRICING[model] ?? MODEL_PRICING['openai/gpt-4o-mini'];
+    const pricing = MODEL_PRICING[model] ?? MODEL_PRICING['openai/gpt-6-luna'];
     return (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000;
   }
 

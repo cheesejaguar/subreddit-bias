@@ -89,7 +89,7 @@ describe('estimateCost', () => {
 
   test('estimates higher cost for expensive models', () => {
     const defaultCost = estimateCost(1000, 'default');
-    const gpt4Cost = estimateCost(1000, 'gpt-4');
+    const gpt4Cost = estimateCost(1000, 'gpt-6-sol');
 
     expect(gpt4Cost).toBeGreaterThan(defaultCost);
   });
@@ -287,9 +287,9 @@ describe('formatBudgetCheck', () => {
 
 describe('TOKEN_PRICING', () => {
   test('has pricing for common models', () => {
-    expect(TOKEN_PRICING['gpt-4']).toBeDefined();
-    expect(TOKEN_PRICING['gpt-3.5-turbo']).toBeDefined();
-    expect(TOKEN_PRICING['claude-3-opus']).toBeDefined();
+    expect(TOKEN_PRICING['gpt-6-sol']).toBeDefined();
+    expect(TOKEN_PRICING['gpt-6-luna']).toBeDefined();
+    expect(TOKEN_PRICING['claude-opus-5-5']).toBeDefined();
     expect(TOKEN_PRICING['default']).toBeDefined();
   });
 
