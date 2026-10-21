@@ -61,28 +61,28 @@ describe('OpenRouterClient', () => {
   });
 
   describe('calculateCost', () => {
-    test('calculates cost for gpt-4o-mini', () => {
+    test('calculates cost for gpt-6-luna', () => {
       const client = new OpenRouterClient({ apiKey: 'test-key' });
-      const cost = client.calculateCost('openai/gpt-4o-mini', 1000, 500);
+      const cost = client.calculateCost('openai/gpt-6-luna', 1000, 500);
 
-      // 1000 * 0.15/1M + 500 * 0.6/1M = 0.00015 + 0.0003 = 0.00045
-      expect(cost).toBeCloseTo(0.00045, 5);
+      // 1000 * 0.1/1M + 500 * 0.5/1M = 0.0001 + 0.00025 = 0.00035
+      expect(cost).toBeCloseTo(0.00035, 5);
     });
 
-    test('calculates cost for gpt-4o', () => {
+    test('calculates cost for gpt-6-sol', () => {
       const client = new OpenRouterClient({ apiKey: 'test-key' });
-      const cost = client.calculateCost('openai/gpt-4o', 1000, 500);
+      const cost = client.calculateCost('openai/gpt-6-sol', 1000, 500);
 
-      // 1000 * 2.5/1M + 500 * 10/1M = 0.0025 + 0.005 = 0.0075
-      expect(cost).toBeCloseTo(0.0075, 5);
+      // 1000 * 2/1M + 500 * 10/1M = 0.002 + 0.005 = 0.007
+      expect(cost).toBeCloseTo(0.007, 5);
     });
 
     test('uses default pricing for unknown models', () => {
       const client = new OpenRouterClient({ apiKey: 'test-key' });
       const cost = client.calculateCost('unknown/model', 1000, 500);
 
-      // Uses gpt-4o-mini pricing
-      expect(cost).toBeCloseTo(0.00045, 5);
+      // Uses gpt-6-luna pricing
+      expect(cost).toBeCloseTo(0.00035, 5);
     });
   });
 });

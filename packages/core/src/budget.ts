@@ -71,12 +71,12 @@ export const DEFAULT_BUDGET_CONFIG: BudgetConfig = {
 
 // Pricing per 1000 tokens (approximate, varies by model)
 export const TOKEN_PRICING = {
-  'gpt-4-turbo': { input: 0.01, output: 0.03 },
-  'gpt-4': { input: 0.03, output: 0.06 },
-  'gpt-3.5-turbo': { input: 0.0005, output: 0.0015 },
-  'claude-3-opus': { input: 0.015, output: 0.075 },
-  'claude-3-sonnet': { input: 0.003, output: 0.015 },
-  'claude-3-haiku': { input: 0.00025, output: 0.00125 },
+  // Source: platform.openai.com/docs/models, docs.anthropic.com models overview
+  'gpt-6-sol': { input: 0.002, output: 0.01 },
+  'gpt-6-luna': { input: 0.0001, output: 0.0005 },
+  'claude-opus-5-5': { input: 0.004, output: 0.02 },
+  'claude-sonnet-5-5': { input: 0.002, output: 0.01 },
+  'claude-haiku-5-5': { input: 0.0001, output: 0.0005 },
   'default': { input: 0.001, output: 0.002 },
 } as const;
 

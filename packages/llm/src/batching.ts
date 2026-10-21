@@ -31,7 +31,7 @@ export interface BatchConfig {
 export const DEFAULT_BATCH_CONFIG: BatchConfig = {
   batchSize: 10,
   maxTokensPerBatch: 4000,
-  model: 'openai/gpt-4o-mini',
+  model: 'openai/gpt-6-luna',
   promptVersion: PROMPT_VERSION,
 };
 
@@ -405,11 +405,12 @@ export function estimateBatchCost(
 function calculateCost(inputTokens: number, outputTokens: number, model: string): number {
   // Pricing per 1M tokens
   const pricing: Record<string, { input: number; output: number }> = {
-    'openai/gpt-4o-mini': { input: 0.15, output: 0.6 },
-    'openai/gpt-4o': { input: 2.5, output: 10 },
-    'openai/gpt-3.5-turbo': { input: 0.5, output: 1.5 },
+    'openai/gpt-6-luna': { input: 0.1, output: 0.5 },
+    'openai/gpt-6-sol': { input: 2, output: 10 },
+    'anthropic/claude-haiku-5.5': { input: 0.1, output: 0.5 },
+    'anthropic/claude-sonnet-5.5': { input: 2, output: 10 },
   };
 
-  const modelPricing = pricing[model] ?? pricing['openai/gpt-4o-mini'];
+  const modelPricing = pricing[model] ?? pricing['openai/gpt-6-luna'];
   return (inputTokens * modelPricing.input + outputTokens * modelPricing.output) / 1_000_000;
 }

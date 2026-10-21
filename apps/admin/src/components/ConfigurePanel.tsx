@@ -11,7 +11,7 @@ export function ConfigurePanel() {
   });
 
   const [modelConfig, setModelConfig] = useState({
-    model: 'openai/gpt-4o-mini',
+    model: 'openai/gpt-6-luna',
     batchSize: 10,
   });
 
@@ -116,10 +116,10 @@ export function ConfigurePanel() {
               onChange={(e) => setModelConfig({ ...modelConfig, model: e.target.value })}
               className="input"
             >
-              <option value="openai/gpt-4o-mini">GPT-4o Mini (Recommended)</option>
-              <option value="openai/gpt-4o">GPT-4o</option>
-              <option value="openai/gpt-3.5-turbo">GPT-3.5 Turbo</option>
-              <option value="anthropic/claude-3-haiku">Claude 3 Haiku</option>
+              <option value="openai/gpt-6-luna">GPT-6 Luna (Recommended)</option>
+              <option value="openai/gpt-6-sol">GPT-6 Sol</option>
+              <option value="anthropic/claude-haiku-5.5">Claude Haiku 5.5</option>
+              <option value="anthropic/claude-sonnet-5.5">Claude Sonnet 5.5</option>
             </select>
           </div>
 

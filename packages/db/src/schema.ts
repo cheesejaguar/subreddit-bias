@@ -290,7 +290,7 @@ ON CONFLICT (version, task_type, framework) DO NOTHING;
 INSERT INTO configurations (key, value)
 VALUES
   ('sampling', '{"defaultStrategies": ["top", "new"], "defaultPostsPerStrategy": 25, "defaultCommentsPerPost": 50, "defaultMaxDepth": 2}'),
-  ('models', '{"default": "openai/gpt-4o-mini", "fallback": "openai/gpt-3.5-turbo", "batchSize": 10}'),
+  ('models', '{"default": "openai/gpt-6-luna", "fallback": "anthropic/claude-haiku-5.5", "batchSize": 10}'),
   ('costs', '{"budgetPerReport": 1.0, "budgetPerMonth": 50.0}'),
   ('frameworks', '{"default": ["nexus", "jda"], "available": ["ihra", "jda", "nexus"]}')
 ON CONFLICT (key) DO NOTHING;
