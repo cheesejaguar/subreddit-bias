@@ -282,49 +282,40 @@ describe('calculateWeightedConfidence', () => {
     ];
 
     const result = calculateWeightedConfidence(classifications);
-    expect(result).toBeCloseTo(0.85, 1);
+    expect(result).toBeCloseTo(0.85, 10);
   });
 
   test('applies lower weight for heuristics', () => {
-    // With multiple classifications, weight differences become apparent
-    const llmOnly = [
+    // Weights only matter relative to each other, so mix sources
+    const mixed = [
       { confidence: 0.9, fromCache: false, modelUsed: 'openai/gpt-4o' },
-      { confidence: 0.8, fromCache: false, modelUsed: 'openai/gpt-4o' },
-    ];
-    const heuristicOnly = [
-      { confidence: 0.9, fromCache: false, modelUsed: 'heuristic' },
-      { confidence: 0.8, fromCache: false, modelUsed: 'heuristic' },
+      { confidence: 0.5, fromCache: false, modelUsed: 'heuristic' },
     ];
 
-    const llmResult = calculateWeightedConfidence(llmOnly);
-    const heuristicResult = calculateWeightedConfidence(heuristicOnly);
-
-    // Heuristic should have lower effective confidence due to 0.7 weight
-    expect(heuristicResult).toBeLessThanOrEqual(llmResult);
+    // (0.9 * 1.0 + 0.5 * 0.7) / (1.0 + 0.7)
+    expect(calculateWeightedConfidence(mixed)).toBeCloseTo(1.25 / 1.7, 10);
   });
 
   test('applies correct weight for gpt-3.5 models', () => {
     const classifications = [
       { confidence: 1.0, fromCache: false, modelUsed: 'openai/gpt-3.5-turbo' },
+      { confidence: 0.0, fromCache: false, modelUsed: 'openai/gpt-4o' },
     ];
 
     const result = calculateWeightedConfidence(classifications);
-    // GPT-3.5 has weight 0.85
-    expect(result).toBeCloseTo(1.0, 5);
+    // GPT-3.5 has weight 0.85 vs 1.0 for GPT-4: 0.85 / 1.85
+    expect(result).toBeCloseTo(0.85 / 1.85, 10);
   });
 
   test('applies cache penalty', () => {
-    // Test that cache penalty is applied by checking the weighted calculation
-    const cachedClassifications = [
+    // The penalty lowers a cached result's weight relative to fresh ones
+    const classifications = [
       { confidence: 1.0, fromCache: true, modelUsed: 'openai/gpt-4o' },
+      { confidence: 0.0, fromCache: false, modelUsed: 'openai/gpt-4o' },
     ];
 
-    const cachedResult = calculateWeightedConfidence(cachedClassifications);
-
-    // Cached result with weight 1.0 * 0.95 = 0.95, so result should be 1.0 * 0.95 / 0.95 = 1.0
-    // The penalty affects the weight, not the final normalized result
-    // Let's verify the function runs without error with cached flag
-    expect(cachedResult).toBeGreaterThan(0);
+    // Cached weight is 1.0 * 0.95: 0.95 / 1.95
+    expect(calculateWeightedConfidence(classifications)).toBeCloseTo(0.95 / 1.95, 10);
   });
 });
 

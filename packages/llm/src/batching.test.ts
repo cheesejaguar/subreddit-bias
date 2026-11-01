@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
 import {
   DEFAULT_BATCH_CONFIG,
   InMemoryCache,
@@ -9,15 +9,61 @@ import {
   estimateBatchCost,
   type BatchConfig,
 } from './batching';
-import { MockOpenRouterClient } from './client';
+import { OpenRouterClient } from './client';
+import { PROMPT_VERSION, SENTIMENT_PROMPT, TARGET_GROUP_PROMPTS } from './prompts';
 import type { RedditComment } from '@subreddit-bias/core';
+
+/**
+ * Local HTTP stand-in for the OpenRouter API (paid third-party LLM provider).
+ * Batching runs against the real OpenRouterClient over real HTTP; tests queue
+ * the completions the provider returns and inspect the prompts it received.
+ */
+let llmServer: ReturnType<typeof Bun.serve>;
+let llmRequests: any[] = [];
+let llmReplies: Array<() => Response> = [];
+
+const llmCompletion = (content: string, totalTokens = 100) =>
+  Response.json({
+    id: 'gen-1',
+    choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: totalTokens / 2, completion_tokens: totalTokens / 2, total_tokens: totalTokens },
+    model: 'openai/gpt-4o-mini',
+  });
+
+beforeAll(() => {
+  llmServer = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      llmRequests.push(await req.json());
+      const next = llmReplies.shift();
+      return next ? next() : llmCompletion('[]');
+    },
+  });
+});
+
+afterAll(() => {
+  llmServer.stop(true);
+});
+
+beforeEach(() => {
+  llmRequests = [];
+  llmReplies = [];
+});
+
+const createLLMClient = () =>
+  new OpenRouterClient({
+    apiKey: 'test-key',
+    baseUrl: `http://localhost:${llmServer.port}`,
+    retryDelay: 1,
+    maxRetries: 1,
+  });
 
 describe('DEFAULT_BATCH_CONFIG', () => {
   test('has correct default values', () => {
     expect(DEFAULT_BATCH_CONFIG.batchSize).toBe(10);
     expect(DEFAULT_BATCH_CONFIG.maxTokensPerBatch).toBe(4000);
     expect(DEFAULT_BATCH_CONFIG.model).toBe('openai/gpt-4o-mini');
-    expect(DEFAULT_BATCH_CONFIG.promptVersion).toBeDefined();
+    expect(DEFAULT_BATCH_CONFIG.promptVersion).toBe(PROMPT_VERSION);
   });
 });
 
@@ -176,8 +222,8 @@ describe('createBatches', () => {
 
     const batches = createBatches(comments, config);
 
-    // Each comment is ~250 tokens, so max 2 per batch with 500 token limit
-    expect(batches.length).toBeGreaterThan(1);
+    // Each comment is 250 tokens, so max 2 per batch with 500 token limit
+    expect(batches.map(b => b.length)).toEqual([2, 2, 1]);
   });
 
   test('handles empty array', () => {
@@ -213,40 +259,92 @@ describe('processSentimentBatches', () => {
   });
 
   test('processes comments and returns results', async () => {
-    const client = new MockOpenRouterClient();
+    const client = createLLMClient();
     const cache = new InMemoryCache();
     const comments = [createTestComment('c1'), createTestComment('c2')];
 
-    // Set up mock response
-    const mockResponse = {
-      id: 'resp-1',
-      choices: [
-        {
-          message: {
-            role: 'assistant' as const,
-            content: JSON.stringify([
-              { id: 'c1', sentiment: 'positive', subjectivity: 0.5, confidence: 0.8 },
-              { id: 'c2', sentiment: 'neutral', subjectivity: 0.3, confidence: 0.9 },
-            ]),
-          },
-          finish_reason: 'stop',
-        },
-      ],
-      usage: { prompt_tokens: 50, completion_tokens: 50, total_tokens: 100 },
-      model: 'test',
-    };
-
-    // Mock the response for any prompt
-    client.setMockResponse(comments.map(c => c.body).join(''), mockResponse);
+    llmReplies.push(() =>
+      llmCompletion(
+        JSON.stringify([
+          { id: 'c1', sentiment: 'positive', subjectivity: 0.5, confidence: 0.8 },
+          { id: 'c2', sentiment: 'neutral', subjectivity: 0.3, confidence: 0.9 },
+        ]),
+        100
+      )
+    );
 
     const result = await processSentimentBatches(comments, client, cache);
 
-    expect(result.fromLLM).toBeGreaterThanOrEqual(0);
+    // One batched request carrying both comments in the sentiment prompt
+    expect(llmRequests).toHaveLength(1);
+    const request = llmRequests[0];
+    expect(request.model).toBe(DEFAULT_BATCH_CONFIG.model);
+    expect(request.response_format).toEqual({ type: 'json_object' });
+    expect(request.messages[0]).toEqual({ role: 'system', content: SENTIMENT_PROMPT.systemPrompt });
+    expect(request.messages[1].role).toBe('user');
+    expect(request.messages[1].content).toContain('[1] ID: c1');
+    expect(request.messages[1].content).toContain('Comment c2');
+
     expect(result.errors).toHaveLength(0);
+    expect(result.fromLLM).toBe(2);
+    expect(result.fromCache).toBe(0);
+    expect(result.tokensUsed).toBe(100);
+    expect(result.results.map(r => [r.id, r.sentiment])).toEqual([
+      ['c1', 'positive'],
+      ['c2', 'neutral'],
+    ]);
+
+    // Valid results are written to the cache, so a re-run makes no LLM call
+    expect(cache.size()).toBe(2);
+    const rerun = await processSentimentBatches(comments, client, cache);
+    expect(rerun.fromCache).toBe(2);
+    expect(llmRequests).toHaveLength(1);
+  });
+
+  test('counts invalid items and does not cache them', async () => {
+    const client = createLLMClient();
+    const cache = new InMemoryCache();
+    const comments = [createTestComment('c1'), createTestComment('c2')];
+
+    llmReplies.push(() =>
+      llmCompletion(
+        JSON.stringify([
+          { id: 'c1', sentiment: 'positive', subjectivity: 0.5, confidence: 0.8 },
+          { id: 'c2', sentiment: 'neutral' },
+        ])
+      )
+    );
+
+    const result = await processSentimentBatches(comments, client, cache);
+
+    expect(result.fromLLM).toBe(1);
+    expect(result.errors).toEqual(['1 invalid responses in batch']);
+    expect(cache.size()).toBe(1);
+  });
+
+  test('records an error for non-JSON model output', async () => {
+    const client = createLLMClient();
+    llmReplies.push(() => llmCompletion('not json'));
+
+    const result = await processSentimentBatches([createTestComment('c1')], client, new InMemoryCache());
+
+    expect(result.fromLLM).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toStartWith('Failed to parse batch response:');
+  });
+
+  test('records the API error when the request fails', async () => {
+    const client = createLLMClient();
+    llmReplies.push(() => Response.json({ error: { message: 'Insufficient credits' } }, { status: 402 }));
+
+    const result = await processSentimentBatches([createTestComment('c1')], client, new InMemoryCache());
+
+    expect(result.results).toHaveLength(0);
+    expect(result.errors).toEqual(['Insufficient credits']);
   });
 
   test('uses cache when available', async () => {
-    const client = new MockOpenRouterClient();
+    const client = createLLMClient();
     const cache = new InMemoryCache();
     const comment = createTestComment('c1');
 
@@ -267,6 +365,8 @@ describe('processSentimentBatches', () => {
 
     expect(result.fromCache).toBe(1);
     expect(result.fromLLM).toBe(0);
+    expect(result.results[0]).toMatchObject({ id: 'c1', sentiment: 'positive' });
+    expect(llmRequests).toHaveLength(0);
   });
 });
 
@@ -289,9 +389,25 @@ describe('processTargetGroupBatches', () => {
   });
 
   test('processes comments with target group analysis', async () => {
-    const client = new MockOpenRouterClient();
+    const client = createLLMClient();
     const cache = new InMemoryCache();
     const comments = [createTestComment('c1')];
+
+    llmReplies.push(() =>
+      llmCompletion(
+        JSON.stringify([
+          {
+            id: 'c1',
+            mentions_group: true,
+            hostility_level: 'low',
+            labels: ['stereotype_or_trope'],
+            confidence: 0.7,
+            rationale: 'Mild stereotype',
+          },
+        ]),
+        80
+      )
+    );
 
     const result = await processTargetGroupBatches(
       comments,
@@ -301,14 +417,23 @@ describe('processTargetGroupBatches', () => {
       cache
     );
 
-    expect(result).toHaveProperty('results');
-    expect(result).toHaveProperty('tokensUsed');
-    expect(result).toHaveProperty('fromCache');
-    expect(result).toHaveProperty('fromLLM');
+    expect(llmRequests).toHaveLength(1);
+    expect(llmRequests[0].messages[0].content).toBe(TARGET_GROUP_PROMPTS.nexus.systemPrompt);
+    expect(llmRequests[0].messages[1].content).toContain('jewish');
+    expect(llmRequests[0].messages[1].content).toContain('[1] ID: c1');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.fromLLM).toBe(1);
+    expect(result.tokensUsed).toBe(80);
+    expect(result.results[0]).toMatchObject({ id: 'c1', mentions_group: true, hostility_level: 'low' });
+
+    // Cached under the framework it was classified with only
+    expect(await cache.get('c1', null, 'target_group', 'nexus', DEFAULT_BATCH_CONFIG.model, PROMPT_VERSION)).not.toBeNull();
+    expect(await cache.get('c1', null, 'target_group', 'jda', DEFAULT_BATCH_CONFIG.model, PROMPT_VERSION)).toBeNull();
   });
 
   test('uses cache for target group analysis', async () => {
-    const client = new MockOpenRouterClient();
+    const client = createLLMClient();
     const cache = new InMemoryCache();
     const comment = createTestComment('c1');
 
@@ -341,6 +466,7 @@ describe('processTargetGroupBatches', () => {
 
     expect(result.fromCache).toBe(1);
     expect(result.fromLLM).toBe(0);
+    expect(llmRequests).toHaveLength(0);
   });
 });
 
@@ -350,15 +476,15 @@ describe('estimateBatchCost', () => {
 
     // 100 comments * 100 input tokens * 0.15/1M + 100 * 50 output * 0.6/1M
     // = 0.0015 + 0.003 = 0.0045
-    expect(cost).toBeGreaterThan(0);
-    expect(cost).toBeLessThan(1);
+    expect(cost).toBeCloseTo(0.0045, 10);
   });
 
   test('estimates higher cost with target group', () => {
     const sentimentOnly = estimateBatchCost(100, DEFAULT_BATCH_CONFIG, false);
     const withTargetGroup = estimateBatchCost(100, DEFAULT_BATCH_CONFIG, true);
 
-    expect(withTargetGroup).toBeGreaterThan(sentimentOnly);
+    // Target group pass uses 1.5x the tokens: 0.0045 + 0.00675
+    expect(withTargetGroup).toBeCloseTo(sentimentOnly + 0.00675, 10);
   });
 
   test('scales with comment count', () => {

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'bun:test';
-import { DatabaseClient, createDatabaseClient } from './client';
+import { DatabaseClient, createDatabaseClient, resetDatabaseClient } from './client';
 import type { CreateReport, ReportConfig, SamplingConfig } from './types';
 
 describe('DatabaseClient', () => {
@@ -26,6 +26,9 @@ describe('DatabaseClient', () => {
   });
 
   beforeEach(() => {
+    // createDatabaseClient('memory://') returns a process-wide singleton, so
+    // reset it to give every test an isolated, empty store.
+    resetDatabaseClient();
     db = createDatabaseClient('memory://');
   });
 
@@ -696,6 +699,46 @@ describe('DatabaseClient', () => {
       const counts = db.getCounts();
       expect(counts.reports).toBe(1);
       expect(counts.jobs).toBe(1);
+    });
+  });
+
+  describe('createDatabaseClient', () => {
+    test('returns the same in-memory instance until reset', async () => {
+      const a = createDatabaseClient('memory://');
+      const b = createDatabaseClient('memory://');
+      expect(b).toBe(a);
+
+      await a.createReport({
+        subreddit: 'shared',
+        config: createTestReportConfig(),
+        methodologyVersion: '1.0.0',
+      });
+      expect(b.getCounts().reports).toBe(1);
+
+      resetDatabaseClient();
+      const c = createDatabaseClient('memory://');
+      expect(c).not.toBe(a);
+      expect(c.getCounts().reports).toBe(0);
+    });
+
+    test('creates a fresh SSL client for non-memory connection strings', () => {
+      const a = createDatabaseClient('postgres://user@host/db');
+      const b = createDatabaseClient('postgres://user@host/db');
+
+      expect(b).not.toBe(a);
+      expect(a.getConfig()).toEqual({
+        connectionString: 'postgres://user@host/db',
+        ssl: true,
+        maxConnections: 10,
+      });
+    });
+
+    test('memory client is configured without SSL', () => {
+      expect(db.getConfig()).toEqual({
+        connectionString: 'memory://',
+        ssl: false,
+        maxConnections: 10,
+      });
     });
   });
 });

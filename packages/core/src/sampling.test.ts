@@ -443,7 +443,9 @@ describe('createDefaultSamplingConfig', () => {
     expect(config.postsPerStrategy).toBe(25);
     expect(config.commentsPerPost).toBe(50);
     expect(config.maxDepth).toBe(2);
-    expect(config.seed).toBeDefined();
+    expect(Number.isInteger(config.seed)).toBe(true);
+    expect(config.seed).toBeGreaterThanOrEqual(0);
+    expect(config.seed).toBeLessThan(2147483647);
   });
 
   test('uses provided seed', () => {

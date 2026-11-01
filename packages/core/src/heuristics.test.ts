@@ -110,6 +110,12 @@ describe('hasSlurs', () => {
     expect(Array.isArray(result.indicators)).toBe(true);
   });
 
+  test('detects listed slurs, including leetspeak variants', () => {
+    const result = hasSlurs('get out you sp1c');
+    expect(result.found).toBe(true);
+    expect(result.indicators).toEqual(['slur: sp1c']);
+  });
+
   test('returns false for clean text', () => {
     const result = hasSlurs('This is a normal sentence without any slurs.');
     expect(result.found).toBe(false);

@@ -127,10 +127,5 @@ describe('Type Validators', () => {
       expect(HOSTILITY_LABELS).toContain('calls_for_exclusion_or_violence');
       expect(HOSTILITY_LABELS).toContain('denial_or_minimization');
     });
-
-    test('is readonly', () => {
-      // TypeScript should prevent mutation, but we can test the array is not empty
-      expect(HOSTILITY_LABELS.length).toBeGreaterThan(0);
-    });
   });
 });
