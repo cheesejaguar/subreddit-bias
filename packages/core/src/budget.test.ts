@@ -44,7 +44,8 @@ describe('recordLLMCall', () => {
 
     expect(usage.llmCallsMade.communitySentiment).toBe(1);
     expect(usage.tokensUsed).toBe(1000);
-    expect(usage.estimatedCost).toBeGreaterThan(0);
+    // 800 input * $0.001/1k + 200 output * $0.002/1k
+    expect(usage.estimatedCost).toBeCloseTo(0.0012, 10);
   });
 
   test('accumulates multiple calls', () => {
@@ -57,6 +58,7 @@ describe('recordLLMCall', () => {
     expect(usage.llmCallsMade.communitySentiment).toBe(2);
     expect(usage.llmCallsMade.targetGroupDetection).toBe(1);
     expect(usage.tokensUsed).toBe(1300);
+    expect(usage.estimatedCost).toBeCloseTo(estimateCost(1300, 'default'), 10);
   });
 });
 
@@ -84,7 +86,8 @@ describe('recordCommentsProcessed', () => {
 describe('estimateCost', () => {
   test('estimates cost for default model', () => {
     const cost = estimateCost(1000, 'default');
-    expect(cost).toBeGreaterThan(0);
+    // Assumes an 80/20 input/output split: (800 * 0.001 + 200 * 0.002) / 1000
+    expect(cost).toBeCloseTo(0.0012, 10);
   });
 
   test('estimates higher cost for expensive models', () => {
@@ -92,6 +95,12 @@ describe('estimateCost', () => {
     const gpt4Cost = estimateCost(1000, 'gpt-4');
 
     expect(gpt4Cost).toBeGreaterThan(defaultCost);
+    // (800 * 0.03 + 200 * 0.06) / 1000
+    expect(gpt4Cost).toBeCloseTo(0.036, 10);
+  });
+
+  test('falls back to default pricing for unknown models', () => {
+    expect(estimateCost(1000, 'some-unknown-model')).toBeCloseTo(estimateCost(1000, 'default'), 10);
   });
 
   test('scales linearly with tokens', () => {
@@ -150,7 +159,31 @@ describe('checkBudget', () => {
     const result = checkBudget(usage);
 
     expect(result.withinBudget).toBe(true);
-    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.violations).toHaveLength(0);
+    expect(result.warnings).toEqual([
+      'Token usage approaching limit: 480000/500000',
+      'Cost approaching limit: $4.50/$5.00',
+    ]);
+  });
+
+  test('detects per-depth comment limit exceeded', () => {
+    const usage = createBudgetUsage();
+    usage.commentsProcessed[1] = 301;
+
+    const result = checkBudget(usage);
+
+    expect(result.withinBudget).toBe(false);
+    expect(result.violations).toEqual(['Comment limit exceeded for depth 1: 301/300']);
+  });
+
+  test('warns when LLM calls for a task are within 10% of the limit', () => {
+    const usage = createBudgetUsage();
+    usage.llmCallsMade.moderatorSentiment = 95;
+
+    const result = checkBudget(usage);
+
+    expect(result.withinBudget).toBe(true);
+    expect(result.warnings).toEqual(['LLM calls for moderatorSentiment approaching limit: 95/100']);
   });
 
   test('calculates remaining budget', () => {
@@ -187,9 +220,12 @@ describe('getRemainingCapacity', () => {
     const usage = createBudgetUsage();
     const capacity = getRemainingCapacity(usage);
 
-    expect(capacity.communitySentiment).toBeGreaterThan(0);
-    expect(capacity.targetGroupDetection).toBeGreaterThan(0);
-    expect(capacity.moderatorSentiment).toBeGreaterThan(0);
+    // Cost allows ~20k comments, so the per-task call limits are the binding constraint
+    expect(capacity).toEqual({
+      communitySentiment: 500,
+      targetGroupDetection: 300,
+      moderatorSentiment: 100,
+    });
   });
 
   test('decreases with usage', () => {
@@ -200,7 +236,8 @@ describe('getRemainingCapacity', () => {
     usage = recordLLMCall(usage, 'communitySentiment', 1000, 'default');
     const usedCapacity = getRemainingCapacity(usage);
 
-    expect(usedCapacity.communitySentiment).toBeLessThan(freshCapacity.communitySentiment);
+    expect(usedCapacity.communitySentiment).toBe(freshCapacity.communitySentiment - 1);
+    expect(usedCapacity.targetGroupDetection).toBe(freshCapacity.targetGroupDetection);
   });
 
   test('considers both call limits and cost limits', () => {
@@ -209,8 +246,12 @@ describe('getRemainingCapacity', () => {
 
     const capacity = getRemainingCapacity(usage);
 
-    // Should be limited by cost, not calls
-    expect(capacity.communitySentiment).toBeLessThan(500);
+    // Should be limited by cost, not calls: $0.01 left / $0.00024 per 200-token comment = 41
+    expect(capacity).toEqual({
+      communitySentiment: 41,
+      targetGroupDetection: 41,
+      moderatorSentiment: 41,
+    });
   });
 });
 
@@ -243,7 +284,7 @@ describe('validateBudgetConfig', () => {
         moderatorSentiment: 50,
       },
     });
-    expect(errors.some(e => e.includes('communitySentiment'))).toBe(true);
+    expect(errors).toEqual(['maxLLMCallsPerTask.communitySentiment cannot be negative']);
   });
 });
 

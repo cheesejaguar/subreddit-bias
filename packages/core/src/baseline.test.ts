@@ -58,8 +58,10 @@ describe('compareSentiment', () => {
 
     const result = compareSentiment(subject, baseline);
 
-    // Confidence intervals likely overlap for such similar distributions
+    // Confidence intervals overlap for such similar distributions
     expect(result.delta.positive).toBeCloseTo(0.02, 5);
+    expect(result.delta.neutral).toBeCloseTo(-0.02, 5);
+    expect(result.isSignificant).toBe(false);
   });
 
   test('handles empty distributions', () => {
@@ -70,6 +72,9 @@ describe('compareSentiment', () => {
 
     expect(result.subject).toEqual(subject);
     expect(result.baseline).toEqual(baseline);
+    // An empty subject has zero proportions rather than NaN
+    expect(result.delta.positive).toBe(0);
+    expect(result.delta.negative).toBe(0);
   });
 });
 
@@ -199,6 +204,8 @@ describe('compareToBaseline', () => {
     expect(result.subjectSubreddit).toBe('testsubreddit');
     expect(result.baselineDescription).toBe('r/comparison');
     expect(result.sentiment).not.toBeNull();
+    expect(result.sentiment!.delta.positive).toBeCloseTo(0.2, 5);
+    expect(result.sentiment!.delta.negative).toBeCloseTo(-0.1, 5);
   });
 
   test('adds limitation for small sample sizes', () => {
@@ -316,7 +323,10 @@ describe('aggregateBaselineComparisons', () => {
 
     expect(result).not.toBeNull();
     expect(result!.baselineDescription).toContain('Aggregated from 2');
-    expect(result!.sentiment).not.toBeNull();
+    // Baselines are averaged ((40+30)/2, (40+50)/2, ...) and compared to the subject
+    expect(result!.sentiment!.baseline).toEqual({ positive: 35, neutral: 45, negative: 20, total: 100 });
+    expect(result!.sentiment!.delta.positive).toBeCloseTo(0.15, 5);
+    expect(result!.sentiment!.delta.neutral).toBeCloseTo(-0.15, 5);
   });
 });
 

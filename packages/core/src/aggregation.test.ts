@@ -111,9 +111,9 @@ describe('wilsonScoreInterval', () => {
   test('returns interval for sample with successes', () => {
     const interval = wilsonScoreInterval(10, 100);
 
-    expect(interval.lower).toBeGreaterThan(0);
-    expect(interval.upper).toBeLessThan(1);
-    expect(interval.lower).toBeLessThan(interval.upper);
+    // Reference 95% Wilson interval for 10/100
+    expect(interval.lower).toBeCloseTo(0.0552, 4);
+    expect(interval.upper).toBeCloseTo(0.1744, 4);
   });
 
   test('returns zero interval for empty sample', () => {
@@ -126,15 +126,24 @@ describe('wilsonScoreInterval', () => {
   test('handles 100% success rate', () => {
     const interval = wilsonScoreInterval(100, 100);
 
+    expect(interval.upper).toBeCloseTo(1, 10);
     expect(interval.upper).toBeLessThanOrEqual(1);
-    expect(interval.lower).toBeGreaterThan(0.9);
+    expect(interval.lower).toBeCloseTo(0.9630, 4);
   });
 
   test('handles 0% success rate', () => {
     const interval = wilsonScoreInterval(0, 100);
 
     expect(interval.lower).toBe(0);
-    expect(interval.upper).toBeLessThan(0.05);
+    expect(interval.upper).toBeCloseTo(0.0370, 4);
+  });
+
+  test('uses a wider interval for 99% confidence', () => {
+    const ci95 = wilsonScoreInterval(10, 100, 0.95);
+    const ci99 = wilsonScoreInterval(10, 100, 0.99);
+
+    expect(ci99.lower).toBeLessThan(ci95.lower);
+    expect(ci99.upper).toBeGreaterThan(ci95.upper);
   });
 });
 
@@ -220,7 +229,13 @@ describe('aggregateTargetGroupStats', () => {
 
     const stats = aggregateTargetGroupStats(classifications, ['nexus', 'jda'], ['jewish', 'muslim']);
 
-    expect(stats.length).toBeGreaterThan(0);
+    // Only framework/group combinations with data are returned, in framework-then-group order
+    expect(stats.map(s => [s.framework, s.targetGroup])).toEqual([
+      ['nexus', 'jewish'],
+      ['jda', 'muslim'],
+    ]);
+    expect(stats[0].hostilityDistribution.low).toBe(1);
+    expect(stats[1].hostilityDistribution.none).toBe(1);
   });
 });
 

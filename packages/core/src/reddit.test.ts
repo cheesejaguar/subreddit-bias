@@ -1,13 +1,11 @@
 import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test';
 import {
   RedditClient,
-  MockRedditClient,
   createRedditClient,
   RedditApiError,
   RedditRateLimitError,
   RedditNotFoundError,
 } from './reddit';
-import type { RedditPost, RedditComment } from './sampling';
 
 describe('RedditClient', () => {
   let originalFetch: typeof globalThis.fetch;
@@ -20,14 +18,39 @@ describe('RedditClient', () => {
     globalThis.fetch = originalFetch;
   });
 
-  test('creates client with default config', () => {
+  const emptyListing = { kind: 'Listing', data: { children: [], after: null, before: null } };
+
+  const stubFetchOk = (body: unknown) => {
+    const fetchMock = mock((_url: string, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    return fetchMock;
+  };
+
+  const requestedUrl = (fetchMock: ReturnType<typeof stubFetchOk>, call = 0) =>
+    fetchMock.mock.calls[call][0];
+
+  const requestedHeaders = (fetchMock: ReturnType<typeof stubFetchOk>, call = 0) =>
+    fetchMock.mock.calls[call][1]?.headers as Record<string, string>;
+
+  test('creates client that sends the default user agent', async () => {
+    const fetchMock = stubFetchOk(emptyListing);
     const client = createRedditClient();
     expect(client).toBeInstanceOf(RedditClient);
+
+    await client.getPosts('test', 'top');
+
+    expect(requestedHeaders(fetchMock)['User-Agent']).toBe('SubredditBiasAnalyzer/1.0.0');
   });
 
-  test('creates client with custom user agent', () => {
+  test('creates client that sends a custom user agent', async () => {
+    const fetchMock = stubFetchOk(emptyListing);
     const client = createRedditClient('CustomAgent/1.0');
-    expect(client).toBeInstanceOf(RedditClient);
+
+    await client.getPosts('test', 'top');
+
+    expect(requestedHeaders(fetchMock)['User-Agent']).toBe('CustomAgent/1.0');
   });
 
   describe('getPosts', () => {
@@ -66,6 +89,9 @@ describe('RedditClient', () => {
       const client = createRedditClient();
       const result = await client.getPosts('test', 'top');
 
+      expect((globalThis.fetch as any).mock.calls[0][0]).toBe(
+        'https://www.reddit.com/r/test/top.json?limit=25&t=week'
+      );
       expect(result.posts).toHaveLength(1);
       expect(result.posts[0].id).toBe('abc123');
       expect(result.posts[0].subreddit).toBe('test');
@@ -111,6 +137,10 @@ describe('RedditClient', () => {
       const client = createRedditClient();
       const result = await client.getPosts('test', 'new');
 
+      // 'new' listings have no timeframe parameter
+      expect((globalThis.fetch as any).mock.calls[0][0]).toBe(
+        'https://www.reddit.com/r/test/new.json?limit=25'
+      );
       expect(result.posts[0].isRemoved).toBe(true);
     });
 
@@ -138,6 +168,17 @@ describe('RedditClient', () => {
       await expect(client.getPosts('nonexistent', 'top')).rejects.toThrow(RedditNotFoundError);
     });
 
+    test('passes limit, timeframe and after cursor in the URL', async () => {
+      const fetchMock = stubFetchOk(emptyListing);
+      const client = createRedditClient();
+
+      await client.getPosts('test', 'controversial', { limit: 7, timeframe: 'month', after: 't3_abc' });
+
+      expect(requestedUrl(fetchMock)).toBe(
+        'https://www.reddit.com/r/test/controversial.json?limit=7&t=month&after=t3_abc'
+      );
+    });
+
     test('throws RedditApiError on other errors', async () => {
       globalThis.fetch = mock(() =>
         Promise.resolve({
@@ -147,7 +188,7 @@ describe('RedditClient', () => {
       );
 
       const client = createRedditClient();
-      await expect(client.getPosts('test', 'top')).rejects.toThrow(RedditApiError);
+      await expect(client.getPosts('test', 'top')).rejects.toThrow('Reddit API error: 500');
     });
   });
 
@@ -191,6 +232,10 @@ describe('RedditClient', () => {
 
       expect(posts).toHaveLength(15);
       expect(callCount).toBe(2);
+      const calls = (globalThis.fetch as any).mock.calls;
+      expect(calls[0][0]).toBe('https://www.reddit.com/r/test/top.json?limit=15&t=week');
+      // Second page asks only for the remaining posts, starting after the cursor
+      expect(calls[1][0]).toBe('https://www.reddit.com/r/test/top.json?limit=5&t=week&after=t3_next');
     });
 
     test('respects maxPosts limit', async () => {
@@ -226,6 +271,7 @@ describe('RedditClient', () => {
       const posts = await client.getAllPosts('test', 'new', { maxPosts: 50 });
 
       expect(posts).toHaveLength(50);
+      expect((globalThis.fetch as any).mock.calls).toHaveLength(1);
     });
   });
 
@@ -306,6 +352,9 @@ describe('RedditClient', () => {
       const client = createRedditClient();
       const comments = await client.getPostComments('test', 'abc123');
 
+      expect((globalThis.fetch as any).mock.calls[0][0]).toBe(
+        'https://www.reddit.com/r/test/comments/abc123.json?limit=500&depth=10&sort=top'
+      );
       expect(comments).toHaveLength(2);
 
       // Top level comment
@@ -315,12 +364,16 @@ describe('RedditClient', () => {
       expect(comments[0].body).toBe('Top level comment');
       expect(comments[0].editedUtc).toBeNull();
       expect(comments[0].isModerator).toBe(false);
+      expect(comments[0].postId).toBe('abc123');
+      expect(comments[0].authorId).toBe('t2_user1');
 
       // Reply comment
       expect(comments[1].id).toBe('comment2');
       expect(comments[1].parentId).toBe('comment1');
       expect(comments[1].depth).toBe(1);
       expect(comments[1].editedUtc).toBe(1704070000);
+      // Falls back to the username when author_fullname is absent
+      expect(comments[1].authorId).toBe('user2');
     });
 
     test('identifies deleted and removed comments', async () => {
@@ -456,7 +509,22 @@ describe('RedditClient', () => {
       const client = createRedditClient();
       const mods = await client.getModerators('test');
 
+      expect((globalThis.fetch as any).mock.calls[0][0]).toBe(
+        'https://www.reddit.com/r/test/about/moderators.json'
+      );
       expect(mods).toEqual(['mod1', 'mod2', 'mod3']);
+    });
+
+    test('rethrows errors other than not-found', async () => {
+      globalThis.fetch = mock(() =>
+        Promise.resolve({
+          ok: false,
+          status: 429,
+        } as Response)
+      );
+
+      const client = createRedditClient();
+      await expect(client.getModerators('test')).rejects.toThrow(RedditRateLimitError);
     });
 
     test('returns empty array if mod list is private', async () => {
@@ -486,6 +554,7 @@ describe('RedditClient', () => {
       const client = createRedditClient();
       const exists = await client.subredditExists('test');
 
+      expect((globalThis.fetch as any).mock.calls[0][0]).toBe('https://www.reddit.com/r/test/about.json');
       expect(exists).toBe(true);
     });
 
@@ -502,80 +571,18 @@ describe('RedditClient', () => {
 
       expect(exists).toBe(false);
     });
-  });
-});
 
-describe('MockRedditClient', () => {
-  test('returns mock posts', async () => {
-    const mockClient = new MockRedditClient();
-    const mockPosts: RedditPost[] = [
-      {
-        id: 'mock1',
-        subreddit: 'test',
-        title: 'Mock Post',
-        permalink: '/r/test/mock1',
-        createdUtc: 1704067200,
-        score: 100,
-        numComments: 10,
-        isRemoved: false,
-      },
-    ];
+    test('rethrows server errors instead of reporting the subreddit missing', async () => {
+      globalThis.fetch = mock(() =>
+        Promise.resolve({
+          ok: false,
+          status: 503,
+        } as Response)
+      );
 
-    mockClient.setMockPosts('test', 'top', mockPosts);
-    const result = await mockClient.getPosts('test', 'top');
-
-    expect(result.posts).toEqual(mockPosts);
-  });
-
-  test('returns mock comments', async () => {
-    const mockClient = new MockRedditClient();
-    const mockComments: RedditComment[] = [
-      {
-        id: 'mockc1',
-        postId: 'post1',
-        parentId: null,
-        subreddit: 'test',
-        permalink: '/r/test/mockc1',
-        authorId: 'user1',
-        body: 'Mock comment',
-        createdUtc: 1704067200,
-        editedUtc: null,
-        score: 5,
-        depth: 0,
-        isRemoved: false,
-        isDeleted: false,
-        isModerator: false,
-      },
-    ];
-
-    mockClient.setMockComments('post1', mockComments);
-    const comments = await mockClient.getPostComments('test', 'post1');
-
-    expect(comments).toEqual(mockComments);
-  });
-
-  test('returns empty arrays for unmocked data', async () => {
-    const mockClient = new MockRedditClient();
-
-    const { posts } = await mockClient.getPosts('unmocked', 'new');
-    expect(posts).toEqual([]);
-
-    const comments = await mockClient.getPostComments('test', 'unmocked');
-    expect(comments).toEqual([]);
-  });
-
-  test('returns mock moderators', async () => {
-    const mockClient = new MockRedditClient();
-    const mods = await mockClient.getModerators('test');
-
-    expect(mods).toEqual(['mod1', 'mod2']);
-  });
-
-  test('subredditExists always returns true', async () => {
-    const mockClient = new MockRedditClient();
-    const exists = await mockClient.subredditExists('any');
-
-    expect(exists).toBe(true);
+      const client = createRedditClient();
+      await expect(client.subredditExists('test')).rejects.toThrow('Reddit API error: 503');
+    });
   });
 });
 
